@@ -1,0 +1,15 @@
+# Python bytecode files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+
+# Generated key files
+*.key
+
+# Windows-specific files
+Thumbs.db
+desktop.ini
