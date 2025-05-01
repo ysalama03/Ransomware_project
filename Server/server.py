@@ -161,6 +161,10 @@ def decrypt():
 def main():
     return Response('nothing to do here...', status=200, headers=HEADERS)
 
+@app.route("/test")
+def test():
+    return Response('test', status=200, headers=HEADERS)
+
 if __name__ == '__main__':
     port = 8000
     host = '127.0.0.1'
