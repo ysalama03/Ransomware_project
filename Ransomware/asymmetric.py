@@ -29,10 +29,10 @@ class assymetric():
             encryption_algorithm=serialization.NoEncryption()
         )
         
-        # Export public key in OpenSSH format
+        # Export public key in PEM format
         self.public_key_PEM = self.key.public_key().public_bytes(
-            encoding=serialization.Encoding.OpenSSH,
-            format=serialization.PublicFormat.OpenSSH
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
         )
 
     def encrypt(self, data):
