@@ -122,8 +122,12 @@ def menu():
         aes_key = _[0]
         base64_path = _[1]
 
+       # Add this conversion right before the encryption
+        if isinstance(aes_key, str):
+            aes_key = aes_key.encode('utf-8')
+
         encrypted_aes_key = client_public_key_object.encrypt(
-            aes_key,
+            aes_key,  # Now this will be bytes
             padding.OAEP(
                 mgf=padding.MGF1(algorithm=hashes.SHA256()),
                 algorithm=hashes.SHA256(),
