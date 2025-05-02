@@ -36,3 +36,4 @@ client_public_key_path = os.path.join(ransomware_path, "client_public_key.PEM")
 Z434M4 = ""
 decryptor = ""
 daemon = ""
+img = ""

