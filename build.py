@@ -7,16 +7,14 @@ import sys
 import shutil
 import subprocess
 
-"""
 parser = argparse.ArgumentParser(description='Build Z434M4.', add_help=True)
-parser.add_argument('-i', '--ip', type=str, required=True, metavar='[FILE]',
+parser.add_argument('-i', '--ip', type=str, required=False, metavar='[IP]',
     help='Ip address of the server. Z434M4 will try to connect to')
-parser.add_argument('-p', '--port', type=str, required=False, metavar='[FILE]',
+parser.add_argument('-p', '--port', type=str, required=False, metavar='[PORT]',
     help='Port of the server.')
-parser.add_argument('-I', '--img', type=str, required=False, metavar='[FILE]',
-    help='Img to change wallpaper and display on Z434M4 execution.')
+parser.add_argument('-I', '--img', type=str, required=False, metavar='[IMAGE]',
+    help='Path to image file to use as ransomware wallpaper')
 args = parser.parse_args()
-"""
 
 
 def error(s):
