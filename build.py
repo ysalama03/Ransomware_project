@@ -63,11 +63,33 @@ def build(program):
     if not os.path.exists(script_path):
         error(f"Script {script_path} not found")
     
-    # Windows-compatible PyInstaller command with distpath set to project directory
-    # --distpath specifies where to put the executable
-    command = f'pyinstaller -F --clean "{script_path}" -n {program} --distpath "{project_dir}"'
-    print(f"Running: {command}")
-    os.system(command)
+    # Use Python to call PyInstaller as a module instead of direct command
+    print(f"Building {program}...")
+    try:
+        pyinstaller_args = [
+            sys.executable, 
+            "-m", 
+            "PyInstaller", 
+            "-F", 
+            "--clean", 
+            script_path, 
+            "-n", 
+            program,
+            "--distpath", 
+            project_dir
+        ]
+        result = subprocess.run(
+            pyinstaller_args,
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        print(result.stdout)
+    except subprocess.CalledProcessError as e:
+        print(f"PyInstaller error: {e}")
+        print(f"STDOUT: {e.stdout}")
+        print(f"STDERR: {e.stderr}")
+        error(f"Failed to build {program}")
 
     # Read the binary data with updated path (now in project root)
     exe_path = os.path.join(project_dir, f"{program}.exe")
