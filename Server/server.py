@@ -163,10 +163,10 @@ def main():
 
 @app.route("/test")
 def test():
-    return Response('test', status=200, headers=HEADERS)
+    return Response('Up', status=200, headers=HEADERS)
 
 if __name__ == '__main__':
     port = 8000
-    host = '127.0.0.1'
+    host = '0.0.0.0'  # Listen on all interfaces instead of just 127.0.0.1
     logger.info(f"Starting server at {host}:{port}")
     app.run(host=host, port=port, debug=False)
