@@ -168,10 +168,27 @@ def encode_image_to_base64(image_path=None):
 def update_variables_file():
     """Update variables.py with base64 encoded executables"""
     print("Updating variables.py with base64 encoded executables...")
-    variables_path = os.path.join(os.getcwd(), "Ransomware", "variables.py")
     
-    if not os.path.exists(variables_path):
-        error("variables.py not found")
+    # Check multiple possible locations for variables.py
+    project_dir = os.getcwd()
+    possible_locations = [
+        os.path.join(project_dir, "variables.py"),                # Direct in current directory
+        os.path.join(project_dir, "Ransomware", "variables.py"),  # In Ransomware subdirectory
+        os.path.join(os.path.dirname(project_dir), "Ransomware", "variables.py")  # In parent/Ransomware
+    ]
+    
+    # Find the first location that exists
+    variables_path = None
+    for location in possible_locations:
+        if os.path.exists(location):
+            variables_path = location
+            print(f"Found variables.py at: {variables_path}")
+            break
+    
+    if not variables_path:
+        error("variables.py not found in any of the expected locations")
+    
+    # Rest of the function remains the same...
     
     # Read the base64 encoded files
     try:
