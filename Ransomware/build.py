@@ -53,13 +53,26 @@ def install_requirements():
 
 
 def build(program):
-    # Use os.path.join for Windows path compatibility
-    ransomware_dir = os.path.join(os.getcwd(), "Ransomware")
-    script_path = os.path.join(ransomware_dir, f"{program}.py")
+    # Check multiple possible locations for the source file
     project_dir = os.getcwd()
     
-    if not os.path.exists(script_path):
-        error(f"Script {script_path} not found")
+    # Possible file locations (in order of preference)
+    possible_locations = [
+        os.path.join(project_dir, f"{program}.py"),                # Direct in project root
+        os.path.join(project_dir, "Ransomware", f"{program}.py"),  # In Ransomware subdirectory
+        os.path.join(os.path.dirname(project_dir), f"{program}.py")  # In parent directory
+    ]
+    
+    # Find the first location that exists
+    script_path = None
+    for location in possible_locations:
+        if os.path.exists(location):
+            script_path = location
+            print(f"Found {program}.py at: {script_path}")
+            break
+    
+    if not script_path:
+        error(f"Script {program}.py not found in any of the expected locations")
     
     # Use Python to call PyInstaller as a module instead of direct command
     print(f"Building {program}...")
