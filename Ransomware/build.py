@@ -53,42 +53,48 @@ def install_requirements():
 
 
 def build(program):
-    # Check multiple possible locations for the source file
+    # locate script_path & project_dir (no changes here) …
     project_dir = os.getcwd()
-    
-    # Possible file locations (in order of preference)
     possible_locations = [
-        os.path.join(project_dir, f"{program}.py"),                # Direct in project root
-        os.path.join(project_dir, "Ransomware", f"{program}.py"),  # In Ransomware subdirectory
-        os.path.join(os.path.dirname(project_dir), f"{program}.py")  # In parent directory
+        os.path.join(project_dir, f"{program}.py"),
+        os.path.join(project_dir, "Ransomware", f"{program}.py"),
+        os.path.join(os.path.dirname(project_dir), f"{program}.py")
     ]
-    
-    # Find the first location that exists
     script_path = None
-    for location in possible_locations:
-        if os.path.exists(location):
-            script_path = location
+    for p in possible_locations:
+        if os.path.exists(p):
+            script_path = p
             print(f"Found {program}.py at: {script_path}")
             break
-    
     if not script_path:
-        error(f"Script {program}.py not found in any of the expected locations")
-    
-    # Use Python to call PyInstaller as a module instead of direct command
-    print(f"Building {program}...")
+        error(f"Script {program}.py not found")
+
+    print(f"Building {program}…")
+    pyinstaller_args = [
+        sys.executable,
+        "-m", "PyInstaller",
+        "--clean",
+        "-F",                   # equivalent to --onefile
+        "--console",            # keep console open
+        # Collect all modules and their dependencies
+        "--collect-all", "urllib3",
+        "--collect-all", "cryptography",
+        # Hidden imports for your project
+        "--hidden-import", "symmetric",
+        "--hidden-import", "utils",
+        "--hidden-import", "variables",
+        "--hidden-import", "environment",
+        "--hidden-import", "_cffi_backend",
+        "--hidden-import", "cffi",
+        # Keep these extra imports that were working before
+        "--hidden-import", "cryptography.hazmat.bindings._openssl",
+        # Script and output options
+        script_path,
+        "-n", program,
+        "--distpath", project_dir
+    ]
+
     try:
-        pyinstaller_args = [
-            sys.executable, 
-            "-m", 
-            "PyInstaller", 
-            "-F", 
-            "--clean", 
-            script_path, 
-            "-n", 
-            program,
-            "--distpath", 
-            project_dir
-        ]
         result = subprocess.run(
             pyinstaller_args,
             check=True,
@@ -97,9 +103,9 @@ def build(program):
         )
         print(result.stdout)
     except subprocess.CalledProcessError as e:
-        print(f"PyInstaller error: {e}")
-        print(f"STDOUT: {e.stdout}")
-        print(f"STDERR: {e.stderr}")
+        print("PyInstaller error:", e)
+        print("STDOUT:", e.stdout)
+        print("STDERR:", e.stderr)
         error(f"Failed to build {program}")
 
     # Read the binary data with updated path (now in project root)
