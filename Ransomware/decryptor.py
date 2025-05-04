@@ -188,8 +188,51 @@ def decrypt_file(file_path, aes_key):
         except Exception as e:
             return False, f"Decryption failed: {str(e)}"
         
-        # Original file path (without .Z434M4 extension)
-        original_path = file_path.replace(".Z434M4", "")
+        # Get the original filename
+        base_filename = os.path.basename(file_path)
+        original_ext = None
+        original_path = file_path
+        
+        if base_filename.endswith(".Z434M4"):
+            # Extract original extension from the decrypted data header (first 256 bytes should contain it)
+            header = decrypted_data[:256]
+            try:
+                # Look for the extension marker in the header
+                ext_marker = b"ORIGINAL_EXT:"
+                if ext_marker in header:
+                    ext_start = header.find(ext_marker) + len(ext_marker)
+                    ext_end = header.find(b";", ext_start)
+                    if ext_end > ext_start:
+                        original_ext = header[ext_start:ext_end].decode('utf-8')
+                        # Remove the header from the decrypted data
+                        decrypted_data = decrypted_data[ext_end+1:]
+                
+                # If no extension was found in header, try to extract it from filename
+                if not original_ext:
+                    # Try to parse from filename (example.docx.Z434M4)
+                    filename_without_ransomware_ext = base_filename[:-7]  # Remove .Z434M4
+                    if '.' in filename_without_ransomware_ext:
+                        parts = filename_without_ransomware_ext.split('.')
+                        original_ext = parts[-1]  # Get last part as extension
+                
+                # Create path with original extension if found
+                if original_ext:
+                    # Remove .Z434M4 from path
+                    path_without_ext = file_path[:-7]
+                    # If path already ends with .ext (from original filename), use it directly
+                    if not path_without_ext.endswith(f".{original_ext}"):
+                        original_path = f"{path_without_ext}.{original_ext}"
+                    else:
+                        original_path = path_without_ext
+                else:
+                    # No extension found, just remove .Z434M4
+                    original_path = file_path[:-7]
+            except:
+                # If any error in parsing, use the path without Z434M4
+                original_path = file_path[:-7]  # Just remove .Z434M4
+        
+        # Debug print to help diagnose
+        print(f"{YELLOW}Restoring file: {original_path}{WHITE}")
         
         # Make sure directory exists
         os.makedirs(os.path.dirname(original_path), exist_ok=True)
